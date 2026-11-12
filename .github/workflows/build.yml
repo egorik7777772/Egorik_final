@@ -1,0 +1,161 @@
+name: Build Mod
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Create Project Structure
+        run: |
+          mkdir -p src/main/java/com/egorik/{config,gui,util,fps,keybind,sky,sound,mixin}
+          mkdir -p src/main/resources/assets/egorik/lang
+
+      - name: Write Gradle Files
+        run: |
+          cat << 'EOF' > build.gradle
+          plugins {
+              id 'fabric-loom' version '1.7-SNAPSHOT'
+              id 'maven-publish'
+          }
+          version = '1.0.0'
+          group = 'com.egorik'
+          repositories { maven { url = 'https://maven.fabricmc.net/' } }
+          dependencies {
+              minecraft "com.mojang:minecraft:1.21.11"
+              mappings "net.fabricmc:yarn:1.21.11+build.3:v2"
+              modImplementation "net.fabricmc:fabric-loader:0.19.5"
+              modImplementation "net.fabricmc.fabric-api:fabric-api:0.116.0+1.21.11"
+          }
+          java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+          processResources { filesMatching("fabric.mod.json") { expand "version": project.version } }
+          EOF
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2G
+          org.gradle.daemon=false
+          minecraft_version=1.21.11
+          yarn_mappings=1.21.11+build.3
+          loader_version=0.19.5
+          fabric_version=0.116.0+1.21.11
+          mod_version=1.0.0
+          maven_group=com.egorik
+          archives_base_name=egorik
+          EOF
+          cat << 'EOF' > settings.gradle
+          pluginManagement { repositories { maven { url = 'https://maven.fabricmc.net/' } mavenCentral() gradlePluginPortal() } }
+          rootProject.name = 'egorik'
+          EOF
+
+      - name: Download Gradle Wrapper
+        run: |
+          curl -L https://raw.githubusercontent.com/FabricMC/fabric-example-mod/1.21/gradlew -o gradlew
+          curl -L https://raw.githubusercontent.com/FabricMC/fabric-example-mod/1.21/gradlew.bat -o gradlew.bat
+          mkdir -p gradle/wrapper
+          curl -L https://raw.githubusercontent.com/FabricMC/fabric-example-mod/1.21/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
+          curl -L https://raw.githubusercontent.com/FabricMC/fabric-example-mod/1.21/gradle/wrapper/gradle-wrapper.properties -o gradle/wrapper/gradle-wrapper.properties
+          chmod +x gradlew
+
+      - name: Write Mod Configuration
+        run: |
+          cat << 'EOF' > src/main/resources/fabric.mod.json
+          {
+            "schemaVersion": 1, "id": "egorik", "version": "1.0.0", "name": "Egorik", "environment": "client",
+            "entrypoints": { "client": ["com.egorik.EgorikMod"] },
+            "mixins": ["egorik.mixins.json"],
+            "depends": { "fabricloader": ">=0.19.5", "minecraft": "~1.21.11", "java": ">=21", "fabric-api": "*" }
+          }
+          EOF
+          cat << 'EOF' > src/main/resources/egorik.mixins.json
+          { "required": true, "package": "com.egorik.mixin", "compatibilityLevel": "JAVA_21", "client": ["SkyMixin"], "injectors": { "defaultRequire": 1 } }
+          EOF
+          echo '{"key.egorik.open_menu": "Open Egorik Menu", "category.egorik": "Egorik"}' > src/main/resources/assets/egorik/lang/en_us.json
+          echo '{"key.egorik.open_menu": "Открыть меню Egorik", "category.egorik": "Egorik"}' > src/main/resources/assets/egorik/lang/ru_ru.json
+
+      - name: Write Java Classes
+        run: |
+          cat << 'EOF' > src/main/java/com/egorik/config/EgorikConfig.java
+          package com.egorik.config;
+          import com.google.gson.*; import java.nio.file.*;
+          public class EgorikConfig {
+              public static boolean fpsBooster = true, fullbright = false, particles = true, rainbowCrosshair = false;
+              public static int skyMode = 0, hitSoundMode = 1, hitParticleMode = 1;
+              private static final Path FILE = Paths.get("config/egorik.json");
+              private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+              public static void load() {
+                  try { if (Files.exists(FILE)) { JsonObject o = JsonParser.parseString(Files.readString(FILE)).getAsJsonObject();
+                      fpsBooster = o.has("fpsBooster") && o.get("fpsBooster").getAsBoolean(); fullbright = o.has("fullbright") && o.get("fullbright").getAsBoolean();
+                      particles = o.has("particles") && o.get("particles").getAsBoolean(); rainbowCrosshair = o.has("rainbowCrosshair") && o.get("rainbowCrosshair").getAsBoolean();
+                      skyMode = o.has("skyMode") ? o.get("skyMode").getAsInt() : 0; hitSoundMode = o.has("hitSoundMode") ? o.get("hitSoundMode").getAsInt() : 1; hitParticleMode = o.has("hitParticleMode") ? o.get("hitParticleMode").getAsInt() : 1; }
+                  } catch (Exception e) { e.printStackTrace(); }
+              }
+              public static void save() { try { JsonObject o = new JsonObject(); o.addProperty("fpsBooster", fpsBooster); o.addProperty("fullbright", fullbright); o.addProperty("particles", particles); o.addProperty("rainbowCrosshair", rainbowCrosshair); o.addProperty("skyMode", skyMode); o.addProperty("hitSoundMode", hitSoundMode); o.addProperty("hitParticleMode", hitParticleMode); Files.createDirectories(FILE.getParent()); Files.writeString(FILE, GSON.toJson(o)); } catch (Exception e) {} }
+          }
+          EOF
+          cat << 'EOF' > src/main/java/com/egorik/util/Animation.java
+          package com.egorik.util;
+          public class Animation { private float value, target, speed = 0.15f; public void setTarget(float t) { this.target = t; } public float get() { return value; } public void update() { value += (target - value) * speed; if (Math.abs(target - value) < 0.001f) value = target; } public static float easeOutCubic(float x) { return 1f - (float)Math.pow(1f - x, 3); } }
+          EOF
+          cat << 'EOF' > src/main/java/com/egorik/keybind/Keybinds.java
+          package com.egorik.keybind;
+          import com.egorik.gui.EgorikMenuScreen; import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents; import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper; import net.minecraft.client.option.KeyBinding; import net.minecraft.client.util.InputUtil; import org.lwjgl.glfw.GLFW;
+          public class Keybinds { public static KeyBinding OPEN_MENU; public static void register() { OPEN_MENU = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.egorik.open_menu", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_B, "category.egorik")); ClientTickEvents.END_CLIENT_TICK.register(client -> { while (OPEN_MENU.wasPressed()) { client.setScreen(new EgorikMenuScreen()); } }); } }
+          EOF
+          cat << 'EOF' > src/main/java/com/egorik/fps/FpsBooster.java
+          package com.egorik.fps;
+          import com.egorik.config.EgorikConfig; import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents; import net.minecraft.client.MinecraftClient; import net.minecraft.client.option.ParticlesMode;
+          public class FpsBooster { private static int tick; public static void init() { ClientTickEvents.END_CLIENT_TICK.register(client -> { if (++tick % 200 == 0) apply(client); }); } public static void apply(MinecraftClient mc) { if (mc.options == null) return; if (EgorikConfig.fpsBooster) { mc.options.getViewDistance().setValue(8); mc.options.getSimulationDistance().setValue(6); mc.options.getEntityShadows().setValue(false); mc.options.getBobView().setValue(false); mc.options.getScreenEffectScale().setValue(0.0); mc.options.getFovEffectScale().setValue(0.0); } mc.options.getParticles().setValue(EgorikConfig.particles ? ParticlesMode.ALL : ParticlesMode.MINIMAL); mc.options.getGamma().setValue(EgorikConfig.fullbright ? 10.0 : 1.0); } }
+          EOF
+          cat << 'EOF' > src/main/java/com/egorik/sky/SkyRenderer.java
+          package com.egorik.sky;
+          import com.egorik.config.EgorikConfig; import net.minecraft.client.MinecraftClient;
+          public class SkyRenderer { public static void init() {} public static int computeColor(int mode, long time) { return switch (mode) { case 1 -> 0xFF4444; case 2 -> 0x4488FF; case 3 -> 0xAA44FF; case 4 -> 0xFF8844; case 5 -> rainbow(time); case 6 -> 0x88CCFF; default -> 0xFFFFFF; }; } private static int rainbow(long time) { float hue = (time % 6000) / 6000f; return java.awt.Color.HSBtoRGB(hue, 0.7f, 1.0f) & 0xFFFFFF; } public static int currentSkyColor() { if (EgorikConfig.skyMode == 0) return 0xFFFFFF; var mc = MinecraftClient.getInstance(); return computeColor(EgorikConfig.skyMode, mc.world != null ? mc.world.getTime() : 0); } }
+          EOF
+          cat << 'EOF' > src/main/java/com/egorik/sound/HitSoundHandler.java
+          package com.egorik.sound;
+          import com.egorik.config.EgorikConfig; import net.fabricmc.fabric.api.event.player.AttackEntityCallback; import net.minecraft.entity.Entity; import net.minecraft.entity.player.PlayerEntity; import net.minecraft.particle.ParticleTypes; import net.minecraft.sound.SoundCategory; import net.minecraft.sound.SoundEvents; import net.minecraft.util.ActionResult; import net.minecraft.util.Hand; import net.minecraft.world.World;
+          public class HitSoundHandler { public static void init() { AttackEntityCallback.EVENT.register((PlayerEntity player, World world, Hand hand, Entity entity, net.minecraft.util.hit.EntityHitResult hitResult) -> { if (world.isClient()) { int s = EgorikConfig.hitSoundMode; if (s > 0) { var sound = switch (s) { case 1 -> SoundEvents.BLOCK_BUBBLE_COLUMN_UPWARDS_AMBIENT; case 2 -> SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP; case 3 -> SoundEvents.BLOCK_NOTE_BLOCK_BELL.value(); default -> null; }; if (sound != null) world.playSound(player, entity.getX(), entity.getY(), entity.getZ(), sound, SoundCategory.PLAYERS, 1f, 1f); } int p = EgorikConfig.hitParticleMode; if (p > 0) { double x = entity.getX(), y = entity.getY() + entity.getHeight() * 0.5, z = entity.getZ(); for (int i = 0; i < (p == 3 ? 10 : 8); i++) { var type = p == 1 ? ParticleTypes.BUBBLE_POP : p == 2 ? ParticleTypes.HEART : ParticleTypes.CRIT; double dx = (world.random.nextDouble() - 0.5) * 0.5, dy = (world.random.nextDouble() - 0.5) * 0.5, dz = (world.random.nextDouble() - 0.5) * 0.5; world.addParticle(type, x + dx, y + dy, z + dz, dx * 0.1, dy * 0.1, dz * 0.1); } } } return ActionResult.PASS; }); } }
+          EOF
+          cat << 'EOF' > src/main/java/com/egorik/mixin/SkyMixin.java
+          package com.egorik.mixin;
+          import com.egorik.sky.SkyRenderer; import net.minecraft.client.render.BackgroundRenderer; import org.spongepowered.asm.mixin.Mixin; import org.spongepowered.asm.mixin.injection.At; import org.spongepowered.asm.mixin.injection.ModifyArgs; import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
+          @Mixin(BackgroundRenderer.class) public class SkyMixin { @ModifyArgs(method = "render", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderSystem;clearColor(FFFF)V")) private static void egorik$changeSkyColor(Args args) { int rgb = SkyRenderer.currentSkyColor(); args.set(0, ((rgb >> 16) & 0xFF) / 255f); args.set(1, ((rgb >> 8) & 0xFF) / 255f); args.set(2, (rgb & 0xFF) / 255f); } }
+          EOF
+          cat << 'EOF' > src/main/java/com/egorik/gui/EgorikMenuScreen.java
+          package com.egorik.gui;
+          import com.egorik.config.EgorikConfig; import com.egorik.util.Animation; import net.minecraft.client.MinecraftClient; import net.minecraft.client.gui.DrawContext; import net.minecraft.client.gui.screen.Screen; import net.minecraft.text.Text;
+          public class EgorikMenuScreen extends Screen {
+              private final Animation open = new Animation(); private final Animation[] buttons = new Animation[7];
+              private static final String[] LABELS = {"FPS Booster", "Fullbright", "Particles", "Rainbow Crosshair", "Sky Mode", "Hit Sound", "Hit Particles"};
+              private static final String[] SKY_NAMES = {"OFF", "RED", "BLUE", "PURPLE", "SUNSET", "RAINBOW", "GRADIENT"}; private static final String[] SOUND_NAMES = {"VANILLA", "BUBBLES", "ORB", "BELL"}; private static final String[] PART_NAMES = {"OFF", "BUBBLES", "HEARTS", "CRIT"};
+              public EgorikMenuScreen() { super(Text.literal("Egorik")); }
+              protected void init() { open.setTarget(1f); for (int i = 0; i < buttons.length; i++) { buttons[i] = new Animation(); buttons[i].setTarget(1f); } }
+              private String label(int i) { return switch (i) { case 0 -> "FPS: " + (EgorikConfig.fpsBooster ? "ON" : "OFF"); case 1 -> "Fullbright: " + (EgorikConfig.fullbright ? "ON" : "OFF"); case 2 -> "Particles: " + (EgorikConfig.particles ? "ON" : "OFF"); case 3 -> "Rainbow Cross: " + (EgorikConfig.rainbowCrosshair ? "ON" : "OFF"); case 4 -> "Sky: " + SKY_NAMES[Math.min(EgorikConfig.skyMode, 6)]; case 5 -> "Hit Sound: " + SOUND_NAMES[Math.min(EgorikConfig.hitSoundMode, 3)]; case 6 -> "Hit Particles: " + PART_NAMES[Math.min(EgorikConfig.hitParticleMode, 3)]; default -> "?"; }; }
+              private boolean isOn(int i) { return switch (i) { case 0 -> EgorikConfig.fpsBooster; case 1 -> EgorikConfig.fullbright; case 2 -> EgorikConfig.particles; case 3 -> EgorikConfig.rainbowCrosshair; case 4 -> EgorikConfig.skyMode > 0; case 5 -> EgorikConfig.hitSoundMode > 0; case 6 -> EgorikConfig.hitParticleMode > 0; default -> false; }; }
+              private void click(int i) { switch (i) { case 0 -> EgorikConfig.fpsBooster = !EgorikConfig.fpsBooster; case 1 -> EgorikConfig.fullbright = !EgorikConfig.fullbright; case 2 -> EgorikConfig.particles = !EgorikConfig.particles; case 3 -> EgorikConfig.rainbowCrosshair = !EgorikConfig.rainbowCrosshair; case 4 -> EgorikConfig.skyMode = (EgorikConfig.skyMode + 1) % 7; case 5 -> EgorikConfig.hitSoundMode = (EgorikConfig.hitSoundMode + 1) % 4; case 6 -> EgorikConfig.hitParticleMode = (EgorikConfig.hitParticleMode + 1) % 4; } EgorikConfig.save(); }
+              public void render(DrawContext g, int mouseX, int mouseY, float delta) { open.update(); for (Animation b : buttons) b.update(); float alpha = Animation.easeOutCubic(open.get()); g.fill(0, 0, width, height, ((int)(alpha * 180) << 24)); int panelW = 360, panelH = 340, px = (width - panelW) / 2, py = (int)((height - panelH) / 2 - (1 - alpha) * 40); g.fill(px - 2, py - 2, px + panelW + 2, py + panelH + 2, ((int)(alpha * 255) << 24) | 0x6C5CE7); g.fill(px, py, px + panelW, py + panelH, ((int)(alpha * 235) << 24) | 0x1A1A2E); g.drawCenteredTextWithShadow(textRenderer, "EGORIK", width / 2, py + 16, ((int)(alpha * 255) << 24) | 0x9B8FFF); int bw = 300, bh = 22, bx = width / 2 - bw / 2, by = py + 50; for (int i = 0; i < LABELS.length; i++) { int bAlpha = (int)(buttons[i].get() * alpha * 255); if (bAlpha < 4) continue; int yy = by + i * (bh + 4); boolean hover = mouseX >= bx && mouseX <= bx + bw && mouseY >= yy && mouseY <= yy + bh; g.fill(bx, yy, bx + bw, yy + bh, (bAlpha << 24) | (hover ? 0x6C5CE7 : (isOn(i) ? 0x2E7D32 : 0x2D2D44))); g.drawCenteredTextWithShadow(textRenderer, label(i), width / 2, yy + 7, (bAlpha << 24) | 0xFFFFFF); } g.drawCenteredTextWithShadow(textRenderer, "ESC or B to close", width / 2, py + panelH - 14, ((int)(alpha * 180) << 24) | 0xAAAAAA); super.render(g, mouseX, mouseY, delta); }
+              public boolean mouseClicked(double mx, double my, int btn) { int panelH = 340, py = (height - panelH) / 2, bw = 300, bh = 22, bx = width / 2 - bw / 2, by = py + 50; for (int i = 0; i < LABELS.length; i++) { int yy = by + i * (bh + 4); if (mx >= bx && mx <= bx + bw && my >= yy && my <= yy + bh) { click(i); return true; } } return super.mouseClicked(mx, my, btn); }
+              public void close() { MinecraftClient.getInstance().setScreen(null); } public boolean shouldPause() { return false; }
+          }
+          EOF
+          cat << 'EOF' > src/main/java/com/egorik/EgorikMod.java
+          package com.egorik;
+          import com.egorik.config.EgorikConfig; import com.egorik.fps.FpsBooster; import com.egorik.keybind.Keybinds; import com.egorik.sky.SkyRenderer; import com.egorik.sound.HitSoundHandler; import net.fabricmc.api.ClientModInitializer;
+          public class EgorikMod implements ClientModInitializer { @Override public void onInitializeClient() { EgorikConfig.load(); Keybinds.register(); FpsBooster.init(); SkyRenderer.init(); HitSoundHandler.init(); } }
+          EOF
+
+      - name: Build with Gradle
+        run: ./gradlew build --no-daemon
+          
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: egorik-mod
+          path: build/libs/*.jar
