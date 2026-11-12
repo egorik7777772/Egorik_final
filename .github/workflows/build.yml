@@ -23,18 +23,23 @@ jobs:
         run: |
           cat << 'EOF' > build.gradle
           plugins {
-              id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+              id 'net.fabricmc.fabric-loom-remap' version "${project.loom_version}"
               id 'maven-publish'
           }
-          version = '1.0.0'
-          group = 'com.egorik'
-          repositories { maven { url = 'https://maven.fabricmc.net/' } }
-          dependencies {
-              minecraft "com.mojang:minecraft:1.21.11"
-              mappings "net.fabricmc:yarn:1.21.11+build.3:v2"
-              modImplementation "net.fabricmc:fabric-loader:0.19.5"
-              modImplementation "net.fabricmc.fabric-api:fabric-api:0.116.0+1.21.11"
+          version = project.mod_version
+          group = project.maven_group
+          
+          repositories {
+              maven { url = 'https://maven.fabricmc.net/' }
           }
+          
+          dependencies {
+              minecraft "com.mojang:minecraft:${project.minecraft_version}"
+              mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+              modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+              modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+          }
+          
           java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
           processResources { filesMatching("fabric.mod.json") { expand "version": project.version } }
           EOF
@@ -43,10 +48,10 @@ jobs:
           org.gradle.jvmargs=-Xmx2G
           org.gradle.daemon=false
           minecraft_version=1.21.11
-          yarn_mappings=1.21.11+build.3
+          yarn_mappings=1.21.11+build.4
           loader_version=0.19.5
-          fabric_version=0.116.0+1.21.11
-          loom_version=1.14-SNAPSHOT
+          loom_version=1.14.10
+          fabric_version=0.140.0+1.21.11
           mod_version=1.0.0
           maven_group=com.egorik
           archives_base_name=egorik
