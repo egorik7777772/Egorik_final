@@ -23,7 +23,7 @@ jobs:
         run: |
           cat << 'EOF' > build.gradle
           plugins {
-              id 'fabric-loom' version '1.7-SNAPSHOT'
+              id 'net.fabricmc.fabric-loom-remap' version '1.10-SNAPSHOT'
               id 'maven-publish'
           }
           version = '1.0.0'
