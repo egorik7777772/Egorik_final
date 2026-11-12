@@ -38,6 +38,7 @@ jobs:
           java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
           processResources { filesMatching("fabric.mod.json") { expand "version": project.version } }
           EOF
+          
           cat << 'EOF' > gradle.properties
           org.gradle.jvmargs=-Xmx2G
           org.gradle.daemon=false
@@ -49,8 +50,15 @@ jobs:
           maven_group=com.egorik
           archives_base_name=egorik
           EOF
+          
           cat << 'EOF' > settings.gradle
-          pluginManagement { repositories { maven { url = 'https://maven.fabricmc.net/' } mavenCentral() gradlePluginPortal() } }
+          pluginManagement {
+              repositories {
+                  maven { url = 'https://maven.fabricmc.net/' }
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
           rootProject.name = 'egorik'
           EOF
 
