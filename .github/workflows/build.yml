@@ -23,7 +23,7 @@ jobs:
         run: |
           cat << 'EOF' > build.gradle
           plugins {
-              id 'net.fabricmc.fabric-loom-remap' version '1.10-SNAPSHOT'
+              id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
               id 'maven-publish'
           }
           version = '1.0.0'
@@ -46,6 +46,7 @@ jobs:
           yarn_mappings=1.21.11+build.3
           loader_version=0.19.5
           fabric_version=0.116.0+1.21.11
+          loom_version=1.14-SNAPSHOT
           mod_version=1.0.0
           maven_group=com.egorik
           archives_base_name=egorik
@@ -54,7 +55,10 @@ jobs:
           cat << 'EOF' > settings.gradle
           pluginManagement {
               repositories {
-                  maven { url = 'https://maven.fabricmc.net/' }
+                  maven {
+                      name = 'Fabric'
+                      url = 'https://maven.fabricmc.net/'
+                  }
                   mavenCentral()
                   gradlePluginPortal()
               }
